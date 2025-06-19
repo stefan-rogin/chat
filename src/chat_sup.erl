@@ -31,7 +31,12 @@ init([]) ->
         intensity => 0,
         period => 1
     },
-    ChildSpecs = [],
+    ChildSpecs = [
+        #{
+            id => main,
+            start => {hello, start_link, []}
+        }
+    ],
     {ok, {SupFlags, ChildSpecs}}.
 
 %% internal functions
