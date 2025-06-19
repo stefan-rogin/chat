@@ -7,8 +7,10 @@
         kernel,
         stdlib
     ]},
-    {env, []},
-    {modules, []},
+    {env, [
+        {port, 8080}
+    ]},
+    % {modules, []},
     {licenses, ["Apache-2.0"]},
     {links, []}
  ]}.
