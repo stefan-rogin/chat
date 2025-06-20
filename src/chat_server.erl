@@ -23,6 +23,7 @@ handle_cast({remove_user, Username}, State) ->
     {noreply, State#{users := Users}}.
 
 % Server
+
 start(Port) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Port, []).
 
@@ -38,18 +39,23 @@ accept(ListenSocket) ->
     handle_client(Socket).
 
 handle_client(Socket) ->
-    gen_tcp:send(Socket, "Login:\n"),
+    io:format("DEBUG: 11\n"),
+    gen_tcp:send(Socket, "Login:"),
     case gen_tcp:recv(Socket, 0) of
         {ok, UsernameBin} ->
             Username = string:trim(binary_to_list(UsernameBin)),
-            io:format("User connected: ~p~n", [Username]),
-            chat_user:start_link(Socket, Username);
+            io:format("User connected: ~s~n", [Username]),
+            {ok, Pid} = chat_user:start_link(Socket, Username),
+            ok = gen_tcp:controlling_process(Socket, Pid);
         _ ->
+            io:format("DEBUG: 14\n"),
             gen_tcp:close(Socket)
     end.
 
 handle_call(_, _From, State) ->
+    io:format("DEBUG: 12\n"),
     {noreply, State}.
 
 handle_info(_, State) ->
+    io:format("DEBUG: 13\n"),
     {noreply, State}.
