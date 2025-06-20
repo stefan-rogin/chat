@@ -1,38 +1,55 @@
 -module(chat_server).
 -behavior(gen_server).
 
--record(state, {users}).
+-export([add_user/2, remove_user/1]).
+-export([start/1, init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
--export([start/1]).
--export([init/1, handle_call/3, handle_cast/2]).
+% Public interface
 
+add_user(Username, Pid) ->
+    gen_server:cast(?MODULE, {add_user, Username, Pid}).
+
+remove_user(Username) ->
+    gen_server:cast(?MODULE, {remove_user, Username}).
+
+% Implementation
+
+handle_cast({add_user, Username, Pid}, State) ->
+    Users = maps:put(Username, Pid, maps:get(users, State)),
+    {noreply, State#{users := Users}};
+
+handle_cast({remove_user, Username}, State) ->
+    Users = maps:remove(Username, maps:get(users, State)),
+    {noreply, State#{users := Users}}.
+
+% Server
 start(Port) ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, Port, []).
 
 init(Port) ->
-    {ok, ListenSocket} = gen_tcp:listen(Port, [binary, {active, true}]),
-    spawn(fun() -> acceptor(ListenSocket) end),
-    {ok, #state{users = []}}.
+    {ok, ListenSocket} = gen_tcp:listen(Port, [binary, {active, false}, {packet, line}, {reuseaddr, true}]),
+    io:format("Chat server listening on port ~p~n", [Port]),
+    spawn(fun() -> accept(ListenSocket) end),
+    {ok, #{users => #{}}}.
 
-handle_call(_E, _From, State) ->
-    {noreply, State}.
-
-handle_cast(accept, State) ->
-    {noreply, State}.
-
-acceptor(ListenSocket) ->
+accept(ListenSocket) ->
     {ok, Socket} = gen_tcp:accept(ListenSocket),
-    spawn(fun() -> acceptor(ListenSocket) end),
-    handle(Socket).
+    spawn(fun() -> accept(ListenSocket) end),
+    handle_client(Socket).
 
-handle(Socket) ->
-    receive
-        {tcp, Socket, <<"user:", User/binary>>} ->
-            gen_tcp:send(Socket, "Logged in: " ++ User),
-            handle(Socket);        
-        {tcp, Socket, Unknown} ->
-            gen_tcp:send(Socket, "Unknown command: " ++ Unknown),
-            handle(Socket);
-        {tcp, Socket, <<"quit", _/binary>>} ->
+handle_client(Socket) ->
+    gen_tcp:send(Socket, "Login:\n"),
+    case gen_tcp:recv(Socket, 0) of
+        {ok, UsernameBin} ->
+            Username = string:trim(binary_to_list(UsernameBin)),
+            io:format("User connected: ~p~n", [Username]),
+            chat_user:start_link(Socket, Username);
+        _ ->
             gen_tcp:close(Socket)
     end.
+
+handle_call(_, _From, State) ->
+    {noreply, State}.
+
+handle_info(_, State) ->
+    {noreply, State}.
