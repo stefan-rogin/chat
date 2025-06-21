@@ -20,6 +20,8 @@ jobs:
       TF_VAR_instance_type: t2.micro
       TF_VAR_key_name: service_chat
       TF_VAR_project_tag: service_chat
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
     steps:
     - name: Checkout code
