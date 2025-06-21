@@ -21,4 +21,4 @@ rebar3.crashdump
 
 share.zip
 **/.terraform*
-**/*.tfstate
+**/*.tfstate*

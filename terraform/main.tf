@@ -35,6 +35,12 @@ resource "aws_instance" "service_chat" {
   key_name               = var.key_name
   vpc_security_group_ids = [aws_security_group.service_chat_sg.id]
 
+  user_data = <<-EOF
+    #!/bin/bash
+    sudo apt update
+    sudo apt install -y erlang
+  EOF
+
   tags = {
     Name    = "service_chat"
     Project = var.project_tag
