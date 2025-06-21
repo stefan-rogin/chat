@@ -15,7 +15,6 @@ The project relies on Rebar3 and Erlang/OTP 25 already being present in your sys
 
     $ git clone https://github.com/stefan-rogin/chat.git
     $ cd chat
-    $ rebar3 compile
     $ rebar3 release
     [...]
     ===> Release successfully assembled: _build/default/rel/chat
@@ -58,6 +57,28 @@ Open a second connection from a different terminal.
     /users
     Online users: one, two
 
+## Deployment
+
+The folder /terraform contains configuration files for creating the infrastructure in AWS. Use `terraform apply/destroy` commands to create and teardown resources. Pre-required are local installs of Terraform and aws-cli, together with access to AWS including key pairs for the project's instance(s). 
+
+A basic `deploy.sh` script can be used at this stage to automatically upload a local build artefact to the EC2 instance. Terraform outputs IP and DNS of created instances, to use with deploy.sh or to connect to the running service. The script requires an environement variable `SERVICE_CHAT_AWS_KEY_PATH` with the path to the key pair file. 
+
+    $ terraform apply
+    [...]
+    Apply complete! Resources: 2 added, 0 changed, 0 destroyed.
+    Outputs:
+
+    instance_public_dns = "ec2-18-199-171-238.eu-central-1.compute.amazonaws.com"
+    instance_public_ip = "18.199.171.238"
+    $ ./deploy.sh 18.199.171.238
+    [...]
+    Done.
+    $ telnet 18.199.171.238 8080
+    [...]
+    Login:one
+    Welcome, one.
+    ...
+
 ## Remarks
 
 Known shortcomings of the current stage, to be addressed in next steps.
@@ -65,3 +86,4 @@ Known shortcomings of the current stage, to be addressed in next steps.
 - The app doesn't handle well parallel connections from the same user.
 - Logging is crude.
 - There are no tests.
+- A less cumbersome Github Actions deployment setup is in progress.
