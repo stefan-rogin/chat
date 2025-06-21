@@ -7,9 +7,9 @@ variable "vpc_id" {
   type = string
 }
 
-variable "allowed_ports" {
-  type    = list(number)
-  default = [22, 8080]
+variable "service_port" {
+  type    = number
+  default = 8080
 }
 
 variable "instance_type" {
