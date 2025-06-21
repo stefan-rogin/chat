@@ -86,4 +86,3 @@ Known shortcomings of the current stage, to be addressed in next steps.
 - The app doesn't handle well parallel connections from the same user.
 - Logging is crude.
 - There are no tests.
-- A less cumbersome Github Actions deployment setup is in progress.
