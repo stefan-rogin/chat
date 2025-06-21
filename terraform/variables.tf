@@ -12,10 +12,6 @@ variable "allowed_ports" {
   default = [22, 8080]
 }
 
-variable "instance_ami" {
-  type = string
-}
-
 variable "instance_type" {
   type    = string
   default = "t2.micro"

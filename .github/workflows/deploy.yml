@@ -1,0 +1,60 @@
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: "Branch to deploy"
+        required: false
+        default: "main"
+
+jobs:
+  provision-and-deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      TF_VAR_region: eu-central-1
+      TF_VAR_vpc_id: vpc-02a260d80efba3460
+      TF_VAR_allowed_ports: '[22,8080]'
+      TF_VAR_instance_ami: ami-0a87a69d69fa289be
+      TF_VAR_instance_type: t2.micro
+      TF_VAR_key_name: service_chat
+      TF_VAR_project_tag: service_chat
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Terraform
+      uses: hashicorp/setup-terraform@v3
+      with:
+        terraform_version: 1.6.6
+
+    - name: Terraform Init
+      working-directory: terraform
+      run: terraform init
+
+    - name: Terraform Apply
+      working-directory: terraform
+      run: terraform apply -auto-approve
+
+    - name: Get EC2 DNS output
+      id: get_dns
+      working-directory: terraform
+      run: |
+        echo "dns=$(terraform output -raw instance_public_dns)" >> $GITHUB_OUTPUT
+
+    - name: Deploy Erlang App to EC2
+      uses: appleboy/ssh-action@v1.0.3
+      with:
+        host: ${{ steps.get_dns.outputs.dns }}
+        username: ubuntu
+        key: ${{ secrets.EC2_SSH_KEY }}
+        script: |
+          sudo apt update
+          sudo apt install -y git erlang rebar3
+          rm -rf chat || true
+          git clone https://github.com/stefan-rogin/chat.git
+          cd chat
+          rebar3 release
+          _build/default/rel/chat/bin/chat daemon

@@ -2,6 +2,22 @@ provider "aws" {
   region = var.region
 }
 
+data "aws_ami" "ubuntu_latest" {
+  most_recent = true
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+
+  owners = ["ubuntu"]
+}
+
 resource "aws_security_group" "service_chat_sg" {
   name   = "service-chat-sg"
   vpc_id = var.vpc_id
@@ -30,7 +46,7 @@ resource "aws_security_group" "service_chat_sg" {
 }
 
 resource "aws_instance" "service_chat" {
-  ami                    = var.instance_ami
+  ami                    = data.aws_ami.ubuntu_latest.id
   instance_type          = var.instance_type
   key_name               = var.key_name
   vpc_security_group_ids = [aws_security_group.service_chat_sg.id]
