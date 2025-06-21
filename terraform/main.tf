@@ -15,7 +15,7 @@ data "aws_ami" "ubuntu_latest" {
     values = ["hvm"]
   }
 
-  owners = ["ubuntu"]
+  owners = ["099720109477"]
 }
 
 resource "aws_security_group" "service_chat_sg" {
