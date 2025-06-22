@@ -13,10 +13,6 @@ variable "instance_type" {
   default = "t2.micro"
 }
 
-variable "key_name" {
-  type = string
-}
-
 variable "project_tag" {
   type    = string
   default = "service_chat"
