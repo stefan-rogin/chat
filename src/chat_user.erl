@@ -10,10 +10,14 @@ handle_info({tcp, Socket, Data}, State) ->
     Response = 
         case Msg of
             "/help" ->
-                "Available commands: /users, /help\n";
+                "Available commands: /users, /quit, /help\n";
             "/users" ->
                 Users = chat_server:get_users(),
                 "Online users: " ++ string:join(Users, ", ") ++ "\n";
+            "/quit" ->
+                gen_tcp:send(Socket, "Bye.\n"),
+                gen_tcp:close(Socket),
+                disconnect(State);
             _ ->
                 "Command not known, type /help to see available commands.\n"
         end,
@@ -23,11 +27,15 @@ handle_info({tcp, Socket, Data}, State) ->
 
 handle_info({tcp_closed, _Socket}, State) ->
     %% Notify server to remove user when disconnected.
-    chat_server:remove_user(maps:get(username, State)),
-    io:format("User disconnected: ~s~n", [maps:get(username, State)]),
+    disconnect(State),
     {stop, normal, State};
 
 handle_info(_, State) ->
+    {noreply, State}.
+
+disconnect(State) ->
+    chat_server:remove_user(maps:get(socket, State)),
+    io:format("User disconnected: ~s~n", [maps:get(username, State)]),
     {noreply, State}.
 
 %% Server
@@ -36,7 +44,7 @@ start_link(Socket, Username) ->
     gen_server:start_link(?MODULE, {Socket, Username}, []).
 
 init({Socket, Username}) ->
-    chat_server:add_user(Username, self()),
+    chat_server:add_user(Socket, Username),
     inet:setopts(Socket, [{active, once}]),
     gen_tcp:send(Socket, io_lib:format(
         "Welcome, ~s.~nType /help to see available commands.~n", [Username])),

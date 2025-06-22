@@ -6,27 +6,27 @@
 
 %% Public interface
 
-add_user(Username, Pid) ->
-    gen_server:cast(?MODULE, {add_user, Username, Pid}).
+add_user(Socket, Username) ->
+    gen_server:cast(?MODULE, {add_user, Socket, Username}).
 
-remove_user(Username) ->
-    gen_server:cast(?MODULE, {remove_user, Username}).
+remove_user(Socket) ->
+    gen_server:cast(?MODULE, {remove_user, Socket}).
 
 get_users() ->
     gen_server:call(?MODULE, get_users).
 
 %% Implementation
 
-handle_cast({add_user, Username, Pid}, State) ->
-    Users = maps:put(Username, Pid, maps:get(users, State)),
+handle_cast({add_user, Socket, Username}, State) ->
+    Users = maps:put(Socket, Username, maps:get(users, State)),
     {noreply, State#{users := Users}};
 
-handle_cast({remove_user, Username}, State) ->
-    Users = maps:remove(Username, maps:get(users, State)),
+handle_cast({remove_user, Socket}, State) ->
+    Users = maps:remove(Socket, maps:get(users, State)),
     {noreply, State#{users := Users}}.
 
 handle_call(get_users, _From, State) ->
-    {reply, maps:keys(maps:get(users, State)), State};
+    {reply, maps:values(maps:get(users, State)), State};
 
 handle_call(_, _From, State) ->
     {noreply, State}.
