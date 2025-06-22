@@ -5,6 +5,8 @@ Demo project for evaluation. __Chat__ is an Erlang/OTP app that acts as a chat s
 ## Overview
 
 - When started, server accepts multiple connections over TCP from named users.
+- The project contains Terraform deployment configuration with NLB and ASG with 2 instances minimum, and an instance template.
+- The chat service is checkedout and built on instances at boot, then started as a service.
 
 ## Setup
 
@@ -57,23 +59,19 @@ Open a second connection from a different terminal.
     /users
     Online users: one, two
 
-## Deployment
+## Deployment on AWS
 
-The folder /terraform contains configuration files for creating the infrastructure in AWS. Use `terraform apply/destroy` commands to create and teardown resources. Pre-required are local installs of Terraform and aws-cli, together with access to AWS including key pairs for the project's instance(s). 
+The folder /terraform contains configuration files for creating the infrastructure in AWS. Use `terraform apply/destroy` commands to create and teardown resources. Pre-required are local installs of Terraform and aws-cli, together with access to AWS. The LB DNS is printed in console at the end of `terraform apply`.
 
-A basic `deploy.sh` script can be used at this stage to automatically upload a local build artefact to the EC2 instance. Terraform outputs IP and DNS of created instances, to use with deploy.sh or to connect to the running service. The script requires an environement variable `SERVICE_CHAT_AWS_KEY_PATH` with the path to the key pair file. 
+All resources are tagged with `Project=service_chat` to ease their identification in AWS. The file `terraform.tfvars` contains several options that can customize the deployment - region, application port etc.
 
     $ terraform apply
     [...]
-    Apply complete! Resources: 2 added, 0 changed, 0 destroyed.
+    Apply complete! Resources: 6 added, 0 changed, 0 destroyed.
     Outputs:
 
-    instance_public_dns = "ec2-18-199-171-238.eu-central-1.compute.amazonaws.com"
-    instance_public_ip = "18.199.171.238"
-    $ ./deploy.sh 18.199.171.238
-    [...]
-    Done.
-    $ telnet 18.199.171.238 8080
+    nlb_dns_name = "Public access DNS: chat-nlb-78a7692ad6078424.elb.eu-central-1.amazonaws.com"
+    $ telnet chat-nlb-78a7692ad6078424.elb.eu-central-1.amazonaws.com 8080
     [...]
     Login:one
     Welcome, one.
@@ -86,3 +84,14 @@ Known shortcomings of the current stage, to be addressed in next steps.
 - The app doesn't handle well parallel connections from the same user.
 - Logging is crude.
 - There are no tests.
+- The app is not ready to work with multiple instances sharing the same state.
+- Known issue: when automatically deployed with `terraform apply`, the service fails to start correctly. The workaround is to manually start the app on the instances. 
+
+    ubuntu@ip-172-31-41-241:~$ sudo systemctl stop chat
+    ubuntu@ip-172-31-41-241:~$ sudo systemctl disable chat
+    ubuntu@ip-172-31-41-241:~$ /home/ubuntu/chat/_build/default/rel/chat/bin/chat daemon
+    [...]
+    telnet chat-nlb-1c25346c40b654b7.elb.eu-central-1.amazonaws.com 8080
+    [...]
+    Login:three
+    Welcome, three.
