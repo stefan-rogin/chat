@@ -43,24 +43,44 @@ resource "aws_launch_template" "chat_lt" {
   update_default_version = true
   vpc_security_group_ids = [aws_security_group.service_chat_sg.id]
 
-  user_data = base64encode(<<-EOF
-#!/bin/bash
-set -e
+  user_data = <<-EOF
+    #!/bin/bash
+    set -e
 
-sudo apt update
-sudo apt install -y erlang rebar3
+    # Install dependencies
+    apt update
+    apt install -y erlang rebar3
 
-sudo -u ubuntu bash <<EOT
-cd /home/ubuntu
-git clone https://github.com/stefan-rogin/chat.git
-cd chat
-rebar3 release
-_build/default/rel/chat/bin/chat daemon
-EOT
-EOF
-  )
+    sudo -u ubuntu bash <<EOT
+    cd /home/ubuntu
+    git clone https://github.com/stefan-rogin/chat.git
+    cd chat
+    rebar3 release
+    EOT
 
+    cat > /etc/systemd/system/chat.service <<SERVICE
+    [Unit]
+    Description=Chat Service
+    After=network.target
 
+    [Service]
+    User=ubuntu
+    WorkingDirectory=/home/ubuntu/chat
+    ExecStart=/home/ubuntu/chat/_build/default/rel/chat/bin/chat daemon
+    ExecStop=/home/ubuntu/chat/_build/default/rel/chat/bin/chat stop
+    Restart=always
+    RestartSec=10
+
+    [Install]
+    WantedBy=multi-user.target
+    SERVICE
+
+    systemctl daemon-reexec
+    systemctl daemon-reload
+    systemctl enable chat
+    systemctl start chat
+    EOF
+    
   tag_specifications {
     resource_type = "instance"
     tags = {
