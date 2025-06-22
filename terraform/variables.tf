@@ -3,10 +3,6 @@ variable "region" {
   default = "eu-central-1"
 }
 
-variable "vpc_id" {
-  type = string
-}
-
 variable "service_port" {
   type    = number
   default = 8080

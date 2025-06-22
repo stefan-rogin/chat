@@ -5,7 +5,7 @@ provider "aws" {
 # Security Group
 resource "aws_security_group" "service_chat_sg" {
   name   = "service-chat-sg"
-  vpc_id = var.vpc_id
+  vpc_id = data.aws_vpc.default.id
 
   ingress {
     from_port   = 22
@@ -43,11 +43,9 @@ resource "aws_launch_template" "chat_lt" {
   update_default_version = true
   vpc_security_group_ids = [aws_security_group.service_chat_sg.id]
 
-  user_data = <<-EOF
+  user_data = <<EOF
     #!/bin/bash
     set -e
-
-    # Install dependencies
     apt update
     apt install -y erlang rebar3
 
@@ -80,7 +78,7 @@ resource "aws_launch_template" "chat_lt" {
     systemctl enable chat
     systemctl start chat
     EOF
-    
+
   tag_specifications {
     resource_type = "instance"
     tags = {
@@ -95,7 +93,7 @@ resource "aws_lb" "chat_nlb" {
   name               = "chat-nlb"
   internal           = false
   load_balancer_type = "network"
-  subnets            = [aws_subnet.public_a.id, aws_subnet.public_b.id]
+  subnets            = data.aws_subnets.default.ids
 
   tags = {
     Name    = "chat-nlb"
@@ -108,7 +106,7 @@ resource "aws_lb_target_group" "chat_tg" {
   name     = "chat-tg"
   port     = var.service_port
   protocol = "TCP"
-  vpc_id   = var.vpc_id
+  vpc_id   = data.aws_vpc.default.id
 
   health_check {
     protocol            = "TCP"
@@ -143,14 +141,11 @@ resource "aws_lb_listener" "chat_listener" {
 
 # Auto Scaling Group
 resource "aws_autoscaling_group" "chat_asg" {
-  name             = "chat-asg"
-  max_size         = 4
-  min_size         = 2
-  desired_capacity = 2
-  vpc_zone_identifier = [
-    aws_subnet.public_a.id,
-    aws_subnet.public_b.id
-  ]
+  name                      = "chat-asg"
+  max_size                  = 4
+  min_size                  = 2
+  desired_capacity          = 2
+  vpc_zone_identifier       = data.aws_subnets.default.ids
   target_group_arns         = [aws_lb_target_group.chat_tg.arn]
   health_check_type         = "EC2"
   health_check_grace_period = 60
@@ -173,31 +168,6 @@ resource "aws_autoscaling_group" "chat_asg" {
   }
 }
 
-#Subnets
-resource "aws_subnet" "public_a" {
-  vpc_id                  = var.vpc_id
-  cidr_block              = "172.31.48.0/24"
-  availability_zone       = "eu-central-1a"
-  map_public_ip_on_launch = true
-
-  tags = {
-    Name    = "public-subnet-a"
-    Project = var.project_tag
-  }
-}
-
-resource "aws_subnet" "public_b" {
-  vpc_id                  = var.vpc_id
-  cidr_block              = "172.31.49.0/24"
-  availability_zone       = "eu-central-1b"
-  map_public_ip_on_launch = true
-
-  tags = {
-    Name    = "public-subnet-b"
-    Project = var.project_tag
-  }
-}
-
 # AMI
 data "aws_ami" "ubuntu_latest" {
   most_recent = true
@@ -210,6 +180,19 @@ data "aws_ami" "ubuntu_latest" {
     values = ["hvm"]
   }
   owners = ["099720109477"]
+}
+
+# Default VPC ID
+data "aws_vpc" "default" {
+  default = true
+}
+
+# Default subnets
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
 }
 
 output "nlb_dns_name" {
