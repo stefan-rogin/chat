@@ -94,11 +94,14 @@ init(Port) ->
     {ok, #{users => #{}, rooms => #{}}}.
 
 accept(ListenSocket) ->
-    {ok, Socket} = gen_tcp:accept(ListenSocket),
-    
-    %% Handle new connection and spawn a new available acceptor
-    spawn(fun() -> accept(ListenSocket) end),
-    handle_client(Socket).
+    case gen_tcp:accept(ListenSocket) of
+        {ok, Socket} ->
+            %% Handle new connection and spawn a new available acceptor
+            spawn(fun() -> accept(ListenSocket) end),
+            handle_client(Socket);
+        {error, closed} ->
+            ok
+    end.
 
 handle_client(Socket) ->
     %% Prompt user to authenticate

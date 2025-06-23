@@ -21,6 +21,10 @@ The project relies on Rebar3 and Erlang/OTP 25 already being present in your sys
     [...]
     ===> Release successfully assembled: _build/default/rel/chat
 
+### Test
+
+You can run tests with `rebar3 eunit`, or with `rebar3 eunit && rebar3 cover --verbose` to include the coverge report in the console.
+
 ### Run
 
 #### Step 1: Start server
