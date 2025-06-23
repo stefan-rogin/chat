@@ -12,11 +12,11 @@
 }).
 %% Public interface
 
-add_user(Socket, Username) ->
-    gen_server:cast(?MODULE, {add_user, Socket, Username}).
+add_user(Username, Socket) ->
+    gen_server:cast(?MODULE, {add_user, Username, Socket}).
 
-remove_user(Socket) ->
-    gen_server:cast(?MODULE, {remove_user, Socket}).
+remove_user(Username) ->
+    gen_server:cast(?MODULE, {remove_user, Username}).
 
 get_users() ->
     gen_server:call(?MODULE, get_users).
@@ -27,49 +27,49 @@ is_user_online(Username) ->
 get_rooms() ->
     gen_server:call(?MODULE, get_rooms).
 
-create_room(RoomName, Socket) ->
-    gen_server:call(?MODULE, {create_room, RoomName, Socket}).
+create_room(RoomName, Username) ->
+    gen_server:call(?MODULE, {create_room, RoomName, Username}).
 
-destroy_room(RoomName, Socket) ->
-    gen_server:call(?MODULE, {destroy_room, RoomName, Socket}).
+destroy_room(RoomName, Username) ->
+    gen_server:call(?MODULE, {destroy_room, RoomName, Username}).
 
 %% Implementation
 
-handle_cast({add_user, Socket, Username}, State) ->
-    Users = maps:put(Socket, Username, maps:get(users, State)),
+handle_cast({add_user, Username, Socket}, State) ->
+    Users = maps:put(Username, Socket, maps:get(users, State)),
     {noreply, State#{users := Users}};
 
-handle_cast({remove_user, Socket}, State) ->
-    Users = maps:remove(Socket, maps:get(users, State)),
+handle_cast({remove_user, Username}, State) ->
+    Users = maps:remove(Username, maps:get(users, State)),
     {noreply, State#{users := Users}}.
 
-handle_call({create_room, RoomName, Socket}, _From, State) ->
+handle_call({create_room, RoomName, Username}, _From, State) ->
     Rooms = maps:get(rooms, State),
     case maps:is_key(RoomName, Rooms) of
         true ->
             {reply, {error, room_not_available}, State};
         false ->
-            NewRooms = maps:put(RoomName, Socket, Rooms),
+            NewRooms = maps:put(RoomName, Username, Rooms),
             {reply, ok, State#{rooms := NewRooms}}
     end;
 
-handle_call({destroy_room, RoomName, Socket}, _From, State) ->
+handle_call({destroy_room, RoomName, Username}, _From, State) ->
     Rooms = maps:get(rooms, State),
     case maps:find(RoomName, Rooms) of
-        {ok, Socket} ->
+        {ok, Username} ->
             NewRooms = maps:remove(RoomName, Rooms),
             {reply, ok, State#{rooms := NewRooms}};
-        {ok, _OtherSocket} ->
+        {ok, _OtherUsername} ->
             {reply, {error, room_not_owned}, State};
         error ->
             {reply, {error, room_not_present}, State}
     end;
 
 handle_call(get_users, _From, State) ->
-    {reply, maps:values(maps:get(users, State)), State};
+    {reply, maps:keys(maps:get(users, State)), State};
 
 handle_call({is_user_online, Username}, _From, State) ->
-    IsOnline = lists:member(Username, maps:values(maps:get(users, State))),
+    IsOnline = maps:is_key(Username, maps:get(users, State)),
     {reply, IsOnline, State};
 
 handle_call(get_rooms, _From, State) ->
@@ -118,7 +118,7 @@ handle_client(Socket) ->
                         false ->
                             io:format("User connected: ~s~n", [Username]),
                             %% Start a dedicated process for the new user
-                            {ok, Pid} = chat_user:start_link(Socket, Username),
+                            {ok, Pid} = chat_user:start_link(Username, Socket),
                             %% Pass socket ownership to the spawned process
                             ok = gen_tcp:controlling_process(Socket, Pid)
                     end;

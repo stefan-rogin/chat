@@ -24,6 +24,7 @@
 %% Implementation
 
 handle_info({tcp, Socket, Data}, State) ->
+    Username = maps:get(username, State),
     {Cmd, Arg} = parse(Data),
     Response =
         case {Cmd, Arg} of
@@ -41,7 +42,7 @@ handle_info({tcp, Socket, Data}, State) ->
                         txt(no_rooms)
                 end;
             {"/create", RoomName} when is_list(RoomName), RoomName =/= [] ->
-                case chat_server:create_room(RoomName, Socket) of
+                case chat_server:create_room(RoomName, Username) of
                     ok -> 
                         io_lib:format(txt(room_arg_created), [RoomName]);
                     {error, room_not_available} ->
@@ -49,7 +50,7 @@ handle_info({tcp, Socket, Data}, State) ->
                 end;
 
             {"/destroy", RoomName} when is_list(RoomName), RoomName =/= [] ->
-                case chat_server:destroy_room(RoomName, Socket) of
+                case chat_server:destroy_room(RoomName, Username) of
                     ok ->
                         io_lib:format(txt(room_arg_destroyed), [RoomName]);
                     {error, room_not_owned} ->
@@ -77,8 +78,9 @@ handle_info(_, State) ->
     {noreply, State}.
 
 disconnect(State) ->
-    chat_server:remove_user(maps:get(socket, State)),
-    io:format("User disconnected: ~s~n", [maps:get(username, State)]),
+    Username = maps:get(username, State),
+    chat_server:remove_user(Username),
+    io:format("User disconnected: ~s~n", [Username]),
     {noreply, State}.
 
 parse(Message) ->
@@ -93,11 +95,11 @@ parse(Message) ->
 txt(Key) -> maps:get(Key, ?TXT).
 %% Server
 
-start_link(Socket, Username) ->
-    gen_server:start_link(?MODULE, {Socket, Username}, []).
+start_link(Username, Socket) ->
+    gen_server:start_link(?MODULE, {Username, Socket}, []).
 
-init({Socket, Username}) ->
-    chat_server:add_user(Socket, Username),
+init({Username, Socket}) ->
+    chat_server:add_user(Username, Socket),
     inet:setopts(Socket, [{active, once}]),
     gen_tcp:send(
         Socket,
@@ -105,7 +107,7 @@ init({Socket, Username}) ->
             txt(welcome_arg), [Username]
         )
     ),
-    {ok, #{socket => Socket, username => Username}}.
+    {ok, #{username => Username, socket => Socket}}.
 
 handle_call(_, _From, State) ->
     {noreply, State}.
