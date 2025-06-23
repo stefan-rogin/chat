@@ -2,8 +2,13 @@
 -behavior(gen_server).
 
 -export([add_user/2, remove_user/1, get_users/0]).
+-export([create_room/2, get_rooms/0, destroy_room/2]).
 -export([start/1, init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
+-define(TXT, #{
+    login => "Login:",
+    username_not_valid => "Invalid username.\n"
+}).
 %% Public interface
 
 add_user(Socket, Username) ->
@@ -15,6 +20,15 @@ remove_user(Socket) ->
 get_users() ->
     gen_server:call(?MODULE, get_users).
 
+get_rooms() ->
+    gen_server:call(?MODULE, get_rooms).
+
+create_room(RoomName, Socket) ->
+    gen_server:call(?MODULE, {create_room, RoomName, Socket}).
+
+destroy_room(RoomName, Socket) ->
+    gen_server:call(?MODULE, {destroy_room, RoomName, Socket}).
+
 %% Implementation
 
 handle_cast({add_user, Socket, Username}, State) ->
@@ -25,12 +39,38 @@ handle_cast({remove_user, Socket}, State) ->
     Users = maps:remove(Socket, maps:get(users, State)),
     {noreply, State#{users := Users}}.
 
+handle_call({create_room, RoomName, Socket}, _From, State) ->
+    Rooms = maps:get(rooms, State),
+    case maps:is_key(RoomName, Rooms) of
+        true ->
+            {reply, {error, room_not_available}, State};
+        false ->
+            NewRooms = maps:put(RoomName, Socket, Rooms),
+            {reply, ok, State#{rooms := NewRooms}}
+    end;
+
+handle_call({destroy_room, RoomName, Socket}, _From, State) ->
+    Rooms = maps:get(rooms, State),
+    case maps:find(RoomName, Rooms) of
+        {ok, Socket} ->
+            NewRooms = maps:remove(RoomName, Rooms),
+            {reply, ok, State#{rooms := NewRooms}};
+        {ok, _OtherSocket} ->
+            {reply, {error, room_not_owned}, State};
+        error ->
+            {reply, {error, room_not_present}, State}
+    end;
+
 handle_call(get_users, _From, State) ->
     {reply, maps:values(maps:get(users, State)), State};
+
+handle_call(get_rooms, _From, State) ->
+    {reply, maps:keys(maps:get(rooms, State)), State};
 
 handle_call(_, _From, State) ->
     {noreply, State}.
 
+txt(Key) -> maps:get(Key, ?TXT).
 %% Server
 
 start(Port) ->
@@ -42,7 +82,7 @@ init(Port) ->
     io:format("Chat server listening on port ~p~n", [Port]),
     %% Spawn acceptor process
     spawn(fun() -> accept(ListenSocket) end),
-    {ok, #{users => #{}}}.
+    {ok, #{users => #{}, rooms => #{}}}.
 
 accept(ListenSocket) ->
     {ok, Socket} = gen_tcp:accept(ListenSocket),
@@ -53,7 +93,7 @@ accept(ListenSocket) ->
 
 handle_client(Socket) ->
     %% Prompt user to authenticate
-    gen_tcp:send(Socket, "Login:"),
+    gen_tcp:send(Socket, txt(login)),
 
     case gen_tcp:recv(Socket, 0) of
         {ok, UsernameBin} ->
@@ -66,7 +106,7 @@ handle_client(Socket) ->
                     %% Pass socket ownership to the spawned process
                     ok = gen_tcp:controlling_process(Socket, Pid);
                 nomatch ->
-                    gen_tcp:send(Socket, "Invalid username.\n"),
+                    gen_tcp:send(Socket, txt(username_not_valid)),
                     gen_tcp:close(Socket)
             end;
         _ ->

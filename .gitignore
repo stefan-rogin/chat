@@ -18,6 +18,7 @@ logs
 *.iml
 rebar3.crashdump
 *~
+.vscode
 
 share.zip
 **/.terraform*

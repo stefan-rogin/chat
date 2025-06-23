@@ -3,23 +3,66 @@
 
 -export([start_link/2, init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
+-define(TXT, #{
+    help => "Available commands: /users\n"
+            "/rooms, /create <Room>, /destroy <Room>\n"
+            "/quit, /help\n",
+    online_users => "Online users: ",
+    rooms => "Rooms: ",
+    no_rooms => "There are no rooms yet. Be the first to make one. :)\n",
+    room_arg_created => "Room ~s created.~n",
+    room_arg_destroyed => "Room ~s destroyed.~n",
+    room_not_available => "A room with this name already exists. Please choose a different name.\n",
+    room_not_owned => "You can only destroy rooms created by you.\n",
+    room_not_present => "There is no room with this name.\n",
+    bye => "Bye.\n",
+    default => "Incomplete command or message sent without joining a room first.\n"
+                "Type /help to see available commands.\n",
+    welcome_arg => "Welcome, ~s.~nType /help to see available commands.~n"
+}).
+
 %% Implementation
 
 handle_info({tcp, Socket, Data}, State) ->
-    Msg = string:trim(binary_to_list(Data)),
-    Response = 
-        case Msg of
-            "/help" ->
-                "Available commands: /users, /quit, /help\n";
-            "/users" ->
+    {Cmd, Arg} = parse(Data),
+    Response =
+        case {Cmd, Arg} of
+            {"/help", _} ->
+                txt(help);
+            {"/users", _} ->
                 Users = chat_server:get_users(),
-                "Online users: " ++ string:join(Users, ", ") ++ "\n";
-            "/quit" ->
-                gen_tcp:send(Socket, "Bye.\n"),
+                txt(online_users) ++ string:join(Users, ", ") ++ "\n";
+            {"/rooms", _} ->
+                Rooms = chat_server:get_rooms(),
+                case Rooms of
+                    [_One | _] ->
+                        txt(rooms) ++ string:join(Rooms, ", ") ++ "\n";
+                    [] ->
+                        txt(no_rooms)
+                end;
+            {"/create", RoomName} when is_list(RoomName), RoomName =/= [] ->
+                case chat_server:create_room(RoomName, Socket) of
+                    ok -> 
+                        io_lib:format(txt(room_arg_created), [RoomName]);
+                    {error, room_not_available} ->
+                        txt(room_not_available)
+                end;
+
+            {"/destroy", RoomName} when is_list(RoomName), RoomName =/= [] ->
+                case chat_server:destroy_room(RoomName, Socket) of
+                    ok ->
+                        io_lib:format(txt(room_arg_destroyed), [RoomName]);
+                    {error, room_not_owned} ->
+                        txt(room_not_owned);
+                    {error, room_not_present} ->
+                        txt(room_not_present)
+                end;
+            {"/quit", _} ->
+                gen_tcp:send(Socket, txt(bye)),
                 gen_tcp:close(Socket),
                 disconnect(State);
             _ ->
-                "Command not known, type /help to see available commands.\n"
+                txt(default)
         end,
     gen_tcp:send(Socket, Response),
     inet:setopts(Socket, [{active, once}]),
@@ -38,6 +81,16 @@ disconnect(State) ->
     io:format("User disconnected: ~s~n", [maps:get(username, State)]),
     {noreply, State}.
 
+parse(Message) ->
+    Trimmed = binary_to_list(string:trim(Message)),
+    Tokens = string:tokens(Trimmed, " "),
+    case Tokens of
+        [Cmd, Arg | _] -> {Cmd, Arg};
+        [Cmd] -> {Cmd, ""};
+        _ -> {"", ""}
+    end.
+
+txt(Key) -> maps:get(Key, ?TXT).
 %% Server
 
 start_link(Socket, Username) ->
@@ -46,8 +99,12 @@ start_link(Socket, Username) ->
 init({Socket, Username}) ->
     chat_server:add_user(Socket, Username),
     inet:setopts(Socket, [{active, once}]),
-    gen_tcp:send(Socket, io_lib:format(
-        "Welcome, ~s.~nType /help to see available commands.~n", [Username])),
+    gen_tcp:send(
+        Socket,
+        io_lib:format(
+            txt(welcome_arg), [Username]
+        )
+    ),
     {ok, #{socket => Socket, username => Username}}.
 
 handle_call(_, _From, State) ->
