@@ -4,9 +4,10 @@
 -export([start_link/2, init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -define(TXT, #{
-    help => "Available commands: /users\n"
-            "/rooms, /create <Room>, /destroy <Room>\n"
-            "/quit, /help\n",
+    help =>
+        "Available commands: /users\n"
+        "/rooms, /create <Room>, /destroy <Room>\n"
+        "/quit, /help\n",
     online_users => "Online users: ",
     rooms => "Rooms: ",
     no_rooms => "There are no rooms yet. Be the first to make one. :)\n",
@@ -16,9 +17,12 @@
     room_not_owned => "You can only destroy rooms created by you.\n",
     room_not_present => "There is no room with this name.\n",
     bye => "Bye.\n",
-    default => "Incomplete command or message sent without joining a room first.\n"
-                "Type /help to see available commands.\n",
-    welcome_arg => "Welcome, ~s.~nType /help to see available commands.~n"
+    default =>
+        "Incomplete command or message sent without joining a room first.\n"
+        "Type /help to see available commands.\n",
+    welcome_arg => "Welcome, ~s.~nType /help to see available commands.~n",
+    user_arg_joined_room => "User ~s joined ~s.~n",
+    room_joined_same => "You are already in this room.\n"
 }).
 
 %% Implementation
@@ -43,18 +47,26 @@ handle_info({tcp, Socket, Data}, State) ->
                 end;
             {"/create", RoomName} when is_list(RoomName), RoomName =/= [] ->
                 case chat_server:create_room(RoomName, Username) of
-                    ok -> 
+                    ok ->
                         io_lib:format(txt(room_arg_created), [RoomName]);
                     {error, room_not_available} ->
                         txt(room_not_available)
                 end;
-
             {"/destroy", RoomName} when is_list(RoomName), RoomName =/= [] ->
                 case chat_server:destroy_room(RoomName, Username) of
                     ok ->
                         io_lib:format(txt(room_arg_destroyed), [RoomName]);
                     {error, room_not_owned} ->
                         txt(room_not_owned);
+                    {error, room_not_present} ->
+                        txt(room_not_present)
+                end;
+            {"/join", RoomName} when is_list(RoomName), RoomName =/= [] ->
+                case chat_server:join_room(RoomName, Username) of
+                    ok ->
+                        io_lib:format(txt(user_arg_joined_room), [Username, RoomName]);
+                    {error, room_joined_same} ->
+                        txt(room_joined_same);
                     {error, room_not_present} ->
                         txt(room_not_present)
                 end;
@@ -68,12 +80,10 @@ handle_info({tcp, Socket, Data}, State) ->
     gen_tcp:send(Socket, Response),
     inet:setopts(Socket, [{active, once}]),
     {noreply, State};
-
 handle_info({tcp_closed, _Socket}, State) ->
     %% Notify server to remove user when disconnected.
     disconnect(State),
     {stop, normal, State};
-
 handle_info(_, State) ->
     {noreply, State}.
 
