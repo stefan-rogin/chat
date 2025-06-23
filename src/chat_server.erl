@@ -1,13 +1,14 @@
 -module(chat_server).
 -behavior(gen_server).
 
--export([add_user/2, remove_user/1, get_users/0]).
+-export([add_user/2, remove_user/1, get_users/0, is_user_online/1]).
 -export([create_room/2, get_rooms/0, destroy_room/2]).
 -export([start/1, init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 -define(TXT, #{
     login => "Login:",
-    username_not_valid => "Invalid username.\n"
+    username_not_valid => "Invalid username.\n",
+    username_not_offline => "You're already logged in from a different client, disconnecting.\n"
 }).
 %% Public interface
 
@@ -19,6 +20,9 @@ remove_user(Socket) ->
 
 get_users() ->
     gen_server:call(?MODULE, get_users).
+
+is_user_online(Username) ->
+    gen_server:call(?MODULE, {is_user_online, Username}).
 
 get_rooms() ->
     gen_server:call(?MODULE, get_rooms).
@@ -64,6 +68,10 @@ handle_call({destroy_room, RoomName, Socket}, _From, State) ->
 handle_call(get_users, _From, State) ->
     {reply, maps:values(maps:get(users, State)), State};
 
+handle_call({is_user_online, Username}, _From, State) ->
+    IsOnline = lists:member(Username, maps:values(maps:get(users, State))),
+    {reply, IsOnline, State};
+
 handle_call(get_rooms, _From, State) ->
     {reply, maps:keys(maps:get(rooms, State)), State};
 
@@ -71,6 +79,7 @@ handle_call(_, _From, State) ->
     {noreply, State}.
 
 txt(Key) -> maps:get(Key, ?TXT).
+
 %% Server
 
 start(Port) ->
@@ -95,16 +104,24 @@ handle_client(Socket) ->
     %% Prompt user to authenticate
     gen_tcp:send(Socket, txt(login)),
 
+    %% TODO: Fix nesting
     case gen_tcp:recv(Socket, 0) of
         {ok, UsernameBin} ->
             %% Match reply to a username-like or drop connection 
             case re:run(UsernameBin, "^[A-Za-z0-9_]+", [{capture, first, list}]) of
                 {match, [Username]} ->
-                    io:format("User connected: ~s~n", [Username]),
-                    %% Start a dedicated process for the new user
-                    {ok, Pid} = chat_user:start_link(Socket, Username),
-                    %% Pass socket ownership to the spawned process
-                    ok = gen_tcp:controlling_process(Socket, Pid);
+                    %% Disallow multiple connections from the same user
+                    case chat_server:is_user_online(Username) of 
+                        true ->
+                            gen_tcp:send(Socket, txt(username_not_offline)),
+                            gen_tcp:close(Socket);
+                        false ->
+                            io:format("User connected: ~s~n", [Username]),
+                            %% Start a dedicated process for the new user
+                            {ok, Pid} = chat_user:start_link(Socket, Username),
+                            %% Pass socket ownership to the spawned process
+                            ok = gen_tcp:controlling_process(Socket, Pid)
+                    end;
                 nomatch ->
                     gen_tcp:send(Socket, txt(username_not_valid)),
                     gen_tcp:close(Socket)
