@@ -5,8 +5,23 @@ Demo project for evaluation. __Chat__ is an Erlang/OTP app that acts as a chat s
 ## Overview
 
 - When started, server accepts multiple connections over TCP from named users.
-- The project contains Terraform deployment configuration with NLB and ASG with 2 instances minimum, and an instance template.
-- The chat service is checkedout and built on instances at boot, then started as a service.
+- Once connected, users can create, destroy, join and leave rooms. 
+- Users can send messages to rooms, received by all room members.
+- The project contains Terraform deployment configuration with NLB and ASG, security group, and an instance template.
+
+```
+Available commands:
+/rooms, /create <Room>, /join <Room>, /leave, /destroy <Room>
+/users, /quit, /help
+Join a room to send messages to its members.
+```
+
+## Project structure
+
+- The project foundation is a rebar3 application.
+- There are two gen_server modules:
+    - `chat_server`: Controls chat server state. Actions are delegated to `handlers/server_handler` module.
+    - `chat_user`: Spawned for each user, they are responsible for the interface between users and server. The messages exchange is handled by `handlers/user_handler`.
 
 ## Setup
 
@@ -40,28 +55,36 @@ You can run tests with `rebar3 eunit`, or with `rebar3 eunit && rebar3 cover --v
 
 #### Step 2: Connect from clients
 
-Use telnet to connect to the server. It's possible to use multiple terminals at the same time, for parallel connections. At login, the chat server expects a username-like entry, closing the connection otherwise.
+Use `telnet` or `nc` to connect to the server from multiple terminals, to impersonate different users. At login, the chat server expects a username-like entry, closing the connection otherwise.
 
-    $ telnet localhost 8080
-    [...]
-    Login:one
-    Welcome, one.
-    Type /help to see available commands.
-    /root
-    Command not known, type /help to see available commands.
-    /help
-    Available commands: /users, /help
-    /users
-    Online users: one
+| **User one**                                | **User two**                                  |
+|---------------------------------------------|-----------------------------------------------|
+| `$ telnet localhost 8080`                   | `$ telnet localhost 8080`                     |
+| `[...]`                                     | `[...]`                                       |
+| `Login:one`                                 | `Login:two`                                   |
+| `Welcome, one.`                             | `Welcome, two.`                               |
+| `Type /help to see available commands.`     | `Type /help to see available commands.`       |
+| `/create Planes`                            |                                               |
+| `Room Planes created.`                      |                                               |
+|                                             | `/users`                                      |
+|                                             | `Online users: one, two`                      |
+|                                             | `/rooms`                                      |
+|                                             | `Rooms: Planes`                               |
+|                                             | `/join Planes`                                |
+|                                             | `[*]: User two joined Planes.`                |
+| `/join Planes`                              |                                               |
+| `[*]: User one joined Planes.`              | `[*]: User one joined Planes.`                |
+| `[two]: hi`                                 | `hi`                                          |
+| `hi! i can't believe it's working!`         | `[one]: hi! i can't believe it's working!`    |
+| `[two]: i know!`                            | `i know!`                                     |
+| `bye now`                                   | `[one]: bye now`                              |
+| `/leave`                                    | `[*]: User one left Planes.`                  |
+| `You left room Planes.`                     |                                               |
+| `/quit`                                     |                                               |
+| `Bye.`                                      |                                               |
+|                                             | `/users`                                      |
+|                                             | `Online users: two`                           |
 
-Open a second connection from a different terminal.
-
-    $ telnet localhost 8080
-    Login:two
-    Welcome, two.
-    Type /help to see available commands.
-    /users
-    Online users: one, two
 
 ## Deployment on AWS
 
@@ -69,33 +92,35 @@ The folder /terraform contains configuration files for creating the infrastructu
 
 All resources are tagged with `Project=service_chat` to ease their identification in AWS. The file `terraform.tfvars` contains several options that can customize the deployment - region, application port etc.
 
-    $ terraform apply
-    [...]
-    Apply complete! Resources: 6 added, 0 changed, 0 destroyed.
-    Outputs:
-
-    nlb_dns_name = "Public access DNS: chat-nlb-78a7692ad6078424.elb.eu-central-1.amazonaws.com"
-    $ telnet chat-nlb-78a7692ad6078424.elb.eu-central-1.amazonaws.com 8080
-    [...]
-    Login:one
-    Welcome, one.
-    ...
+```
+$ terraform apply
+[...]
+Apply complete! Resources: 6 added, 0 changed, 0destroyed.
+Outputs:
+nlb_dns_name = "Public access DNS:chat-nlb-78a7692ad6078424.elb.eu-central-1.amazonawscom"
+$ telnet chat-nlb-78a7692ad6078424.elb.eu-central-1amazonaws.com 8080
+[...]
+Login:one
+Welcome, one.
+...
+```
 
 ## Remarks
 
-Known shortcomings of the current stage, to be addressed in next steps.
+Known shortcomings of the current stage.
 
-- The app doesn't handle well parallel connections from the same user.
 - Logging is crude.
-- There are no tests.
+- Tests are few, limited to use cases not involving mocking `gen_tcp` or `chat_server` (for `user_handler` tests).
 - The app is not ready to work with multiple instances sharing the same state.
 - Known issue: when automatically deployed with `terraform apply`, the service fails to start correctly. The workaround is to manually start the app on the instances. 
 
-    ubuntu@ip-172-31-41-241:~$ sudo systemctl stop chat
-    ubuntu@ip-172-31-41-241:~$ sudo systemctl disable chat
-    ubuntu@ip-172-31-41-241:~$ /home/ubuntu/chat/_build/default/rel/chat/bin/chat daemon
-    [...]
-    telnet chat-nlb-1c25346c40b654b7.elb.eu-central-1.amazonaws.com 8080
-    [...]
-    Login:three
-    Welcome, three.
+```
+ubuntu@ip-172-31-41-241:~$ sudo systemctl stop chat
+ubuntu@ip-172-31-41-241:~$ sudo systemctl disable chat
+ubuntu@ip-172-31-41-241:~$ /home/ubuntu/chat/_builddefault/rel/chat/bin/chat daemon
+[...]
+telnet chat-nlb-1c25346c40b654b7.elb.eu-central-1amazonaws.com 8080
+[...]
+Login:three
+Welcome, three.
+```

@@ -1,6 +1,8 @@
 -module(user_handler).
 -export([handle_info/2]).
 
+%% Message exchange handler between user and service
+%% Actions not involving server state are resolve locally.
 handle_info({tcp, Socket, Data}, State) ->
     Username = maps:get(username, State),
     {Cmd, Arg} = parse(Data),
@@ -37,9 +39,7 @@ handle_info({tcp, Socket, Data}, State) ->
                 end;
             {"/join", RoomName} when is_list(RoomName), RoomName =/= [] ->
                 case chat_server:join_room(RoomName, Username) of
-                    ok ->
-                        %% TODO: Move in messages, not trace
-                        io_lib:format(text:txt(user_arg_joined_room), [Username, RoomName]);
+                    ok -> ok;
                     {error, room_joined_same} ->
                         text:txt(room_joined_same);
                     {error, room_not_present} ->
@@ -50,17 +50,25 @@ handle_info({tcp, Socket, Data}, State) ->
                     {error, user_not_in_room} ->
                         text:txt(user_not_in_room);                    
                     RoomName ->
-                        %% TODO: Move in messages, not trace
-                        io_lib:format(text:txt(user_arg_left_room), [Username, RoomName])
+                        io_lib:format(text:txt(user_left_room), [RoomName])
                 end;
             {"/quit", _} ->
                 gen_tcp:send(Socket, text:txt(bye)),
                 gen_tcp:close(Socket),
                 disconnect(State);
-            _ ->
-                text:txt(default)
+            {Message, _} ->
+                %% Not a command, ask server to send message
+                case chat_server:send_message(Username, Message) of
+                    ok -> ok;
+                    {error, user_not_in_room} ->
+                        text:txt(default)
+                end
         end,
-    gen_tcp:send(Socket, Response),
+    case Response of
+        R when is_list(R); is_binary(R) ->
+            gen_tcp:send(Socket, R);
+        _ -> ok
+    end,
     inet:setopts(Socket, [{active, once}]),
     {noreply, State};
 
@@ -87,7 +95,7 @@ parse(Message) ->
     Trimmed = string:trim(binary_to_list(Message)),
     Tokens = string:tokens(Trimmed, " "),
     case Tokens of
-        [Cmd, Arg | _] -> {Cmd, Arg};
-        [Cmd] -> {Cmd, ""};
-        _ -> {"", ""}
+        [Cmd, Arg | _] when hd(Cmd) =:= $/ -> {Cmd, Arg}; %% Command with arg
+        [Cmd] when hd(Cmd) =:= $/ -> {Cmd, ""}; %% Command without arg
+        _ -> {Trimmed, ""}
     end.
