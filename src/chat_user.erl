@@ -3,47 +3,33 @@
 
 -export([start_link/2, init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
-%% Implementation
+%% Implementation: delegate to handler
 
-handle_info({tcp, Socket, Data}, State) ->
-    Msg = string:trim(binary_to_list(Data)),
-    Response = 
-        case Msg of
-            "/help" ->
-                "Available commands: /users, /help\n";
-            "/users" ->
-                Users = chat_server:get_users(),
-                "Online users: " ++ string:join(Users, ", ") ++ "\n";
-            _ ->
-                "Command not known, type /help to see available commands.\n"
-        end,
-    gen_tcp:send(Socket, Response),
-    inet:setopts(Socket, [{active, once}]),
-    {noreply, State};
-
-handle_info({tcp_closed, _Socket}, State) ->
-    %% Notify server to remove user when disconnected.
-    chat_server:remove_user(maps:get(username, State)),
-    io:format("User disconnected: ~s~n", [maps:get(username, State)]),
-    {stop, normal, State};
-
-handle_info(_, State) ->
-    {noreply, State}.
+handle_info(Msg, State) ->
+    user_handler:handle_info(Msg, State).
 
 %% Server
 
-start_link(Socket, Username) ->
-    gen_server:start_link(?MODULE, {Socket, Username}, []).
+start_link(Username, Socket) ->
+    gen_server:start_link(?MODULE, {Username, Socket}, []).
 
-init({Socket, Username}) ->
-    chat_server:add_user(Username, self()),
+init({Username, Socket}) ->
+    chat_server:add_user(Username, Socket),
     inet:setopts(Socket, [{active, once}]),
-    gen_tcp:send(Socket, io_lib:format(
-        "Welcome, ~s.~nType /help to see available commands.~n", [Username])),
-    {ok, #{socket => Socket, username => Username}}.
+    gen_tcp:send(
+        Socket,
+        io_lib:format(
+            text:txt(welcome_arg), [Username]
+        )
+    ),
+    {ok, #{username => Username, socket => Socket}}.
 
-handle_call(_, _From, State) ->
-    {noreply, State}.
+%% Unsupported
+handle_call(_, _From, State) -> 
+    io:format("Unsupported: ~s, ~s~n", [?MODULE, ?FUNCTION_NAME]),
+    {reply, unhandled, State}.
 
+%% Unsupported
 handle_cast(_, State) ->
+    io:format("Unsupported: ~s, ~s~n", [?MODULE, ?FUNCTION_NAME]),
     {noreply, State}.

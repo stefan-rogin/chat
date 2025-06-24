@@ -1,13 +1,15 @@
 -module(chat_server).
 -behavior(gen_server).
 
--export([add_user/2, remove_user/1, get_users/0]).
+-export([add_user/2, remove_user/1, get_users/0, is_user_online/1]).
+-export([create_room/2, get_rooms/0, destroy_room/2]).
+-export([join_room/2, leave_room/1, send_message/2]).
 -export([start/1, init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 %% Public interface
 
-add_user(Username, Pid) ->
-    gen_server:cast(?MODULE, {add_user, Username, Pid}).
+add_user(Username, Socket) ->
+    gen_server:cast(?MODULE, {add_user, Username, Socket}).
 
 remove_user(Username) ->
     gen_server:cast(?MODULE, {remove_user, Username}).
@@ -15,21 +17,34 @@ remove_user(Username) ->
 get_users() ->
     gen_server:call(?MODULE, get_users).
 
-%% Implementation
+is_user_online(Username) ->
+    gen_server:call(?MODULE, {is_user_online, Username}).
 
-handle_cast({add_user, Username, Pid}, State) ->
-    Users = maps:put(Username, Pid, maps:get(users, State)),
-    {noreply, State#{users := Users}};
+get_rooms() ->
+    gen_server:call(?MODULE, get_rooms).
 
-handle_cast({remove_user, Username}, State) ->
-    Users = maps:remove(Username, maps:get(users, State)),
-    {noreply, State#{users := Users}}.
+create_room(RoomName, Username) ->
+    gen_server:call(?MODULE, {create_room, RoomName, Username}).
 
-handle_call(get_users, _From, State) ->
-    {reply, maps:keys(maps:get(users, State)), State};
+destroy_room(RoomName, Username) ->
+    gen_server:call(?MODULE, {destroy_room, RoomName, Username}).
 
-handle_call(_, _From, State) ->
-    {noreply, State}.
+join_room(RoomName, Username) ->
+    gen_server:call(?MODULE, {join_room, RoomName, Username}).
+
+leave_room(Username) ->
+    gen_server:call(?MODULE, {leave_room, Username}).
+
+send_message(Username, Message) ->
+    gen_server:call(?MODULE, {send_message, Username, Message}).
+
+%% Implementation: delegate to handler
+
+handle_cast(Msg, State) ->
+    server_handler:handle_cast(Msg, State).
+
+handle_call(Msg, _From, State) ->
+    server_handler:handle_call(Msg, _From, State).
 
 %% Server
 
@@ -38,40 +53,24 @@ start(Port) ->
 
 init(Port) ->
     {ok, ListenSocket} = gen_tcp:listen(
-        Port, [binary, {active, false}, {packet, line}, {reuseaddr, true}]),
+        Port, [binary, {active, false}, {packet, line}, {reuseaddr, true}]
+    ),
     io:format("Chat server listening on port ~p~n", [Port]),
     %% Spawn acceptor process
     spawn(fun() -> accept(ListenSocket) end),
-    {ok, #{users => #{}}}.
+    {ok, #{users => #{}, rooms => #{}, users_rooms => #{}}}.
 
 accept(ListenSocket) ->
-    {ok, Socket} = gen_tcp:accept(ListenSocket),
-    
-    %% Handle new connection and spawn a new available acceptor
-    spawn(fun() -> accept(ListenSocket) end),
-    handle_client(Socket).
-
-handle_client(Socket) ->
-    %% Prompt user to authenticate
-    gen_tcp:send(Socket, "Login:"),
-
-    case gen_tcp:recv(Socket, 0) of
-        {ok, UsernameBin} ->
-            %% Match reply to a username-like or drop connection 
-            case re:run(UsernameBin, "^[A-Za-z0-9_]+", [{capture, first, list}]) of
-                {match, [Username]} ->
-                    io:format("User connected: ~s~n", [Username]),
-                    %% Start a dedicated process for the new user
-                    {ok, Pid} = chat_user:start_link(Socket, Username),
-                    %% Pass socket ownership to the spawned process
-                    ok = gen_tcp:controlling_process(Socket, Pid);
-                nomatch ->
-                    gen_tcp:send(Socket, "Invalid username.\n"),
-                    gen_tcp:close(Socket)
-            end;
-        _ ->
-            gen_tcp:close(Socket)
+    case gen_tcp:accept(ListenSocket) of
+        {ok, Socket} ->
+            %% Handle new connection and spawn a new available acceptor
+            spawn(fun() -> accept(ListenSocket) end),
+            login_handler:handle_login(Socket);
+        {error, closed} ->
+            ok
     end.
 
+%% Unsupported
 handle_info(_, State) ->
+    io:format("Unsupported: ~s, ~s~n", [?MODULE, ?FUNCTION_NAME]),
     {noreply, State}.
