@@ -38,7 +38,7 @@ The project relies on Rebar3 and Erlang/OTP 25 already being present in your sys
 
 ### Test
 
-You can run tests with `rebar3 eunit`, or with `rebar3 eunit && rebar3 cover --verbose` to include the coverge report in the console.
+You can run tests with `rebar3 eunit`, or with `rebar3 eunit && rebar3 cover --verbose` to include the coverage report in the console.
 
 ### Run
 
@@ -78,8 +78,8 @@ Use `telnet` or `nc` to connect to the server from multiple terminals, to impers
 | `hi! i can't believe it's working!`         | `[one]: hi! i can't believe it's working!`    |
 | `[two]: i know!`                            | `i know!`                                     |
 | `bye now`                                   | `[one]: bye now`                              |
-| `/leave`                                    | `[*]: User one left Planes.`                  |
-| `You left room Planes.`                     |                                               |
+| `/leave`                                    |                                               |
+| `You left room Planes.`                     | `[*]: User one left Planes.`                  |
 | `/quit`                                     |                                               |
 | `Bye.`                                      |                                               |
 |                                             | `/users`                                      |
