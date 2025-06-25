@@ -74,20 +74,6 @@ handle_call({leave_room, Username}, _From, State) ->
             {reply, {error, user_not_in_room}, State}
     end;
 
-%% Send message
-handle_call({send_message, Username, Message}, _From, State) ->
-    case maps:find(Username, maps:get(users_rooms, State)) of
-        {ok, RoomName} ->
-            RoomMessage = io_lib:format("[~s]: ~s~n", [Username, Message]),
-            %% Inoke helper to identify matching users/sockets as room recipients
-            %% The message author is excluded
-            RoomSockets = get_room_sockets(Username, RoomName, State),
-            [gen_tcp:send(Socket, RoomMessage) || Socket <- RoomSockets],
-            {reply, ok, State};
-        error ->
-            {reply, {error, user_not_in_room}, State}
-    end;
-
 %% Get users
 handle_call(get_users, _From, State) ->
     {reply, maps:keys(maps:get(users, State)), State};
@@ -100,6 +86,31 @@ handle_call({is_user_online, Username}, _From, State) ->
 %% Get rooms
 handle_call(get_rooms, _From, State) ->
     {reply, maps:keys(maps:get(rooms, State)), State};
+
+%% Send message
+handle_call({send_message, Username, Message}, _From, State) ->
+    case maps:find(Username, maps:get(users_rooms, State)) of
+        {ok, RoomName} ->
+            RoomMessage = io_lib:format("[~s]: ~s~n", [Username, Message]),
+            %% Invoke helper to identify matching users/sockets as room recipients
+            %% The message author is excluded
+            RoomSockets = get_room_sockets(Username, RoomName, State),
+            [gen_tcp:send(Socket, RoomMessage) || Socket <- RoomSockets],
+            {reply, ok, State};
+        error ->
+            {reply, {error, user_not_in_room}, State}
+    end;
+
+%% Whisper message
+handle_call({whisper_message, Username, Message}, _From, State) ->
+    case maps:find(Username, maps:get(users, State)) of
+        {ok, Socket} ->
+            Whisper = io_lib:format("<<~s>>: ~s~n", [Username, Message]),
+            gen_tcp:send(Socket, Whisper),
+            {reply, ok, State};
+        error ->
+            {reply, {error, user_not_online}, State}
+    end;
 
 %% Unsupported
 handle_call(_, _From, State) ->
@@ -115,7 +126,7 @@ handle_cast({add_user, Username, Socket}, State) ->
 handle_cast({remove_user, Username}, State) ->
     %% Update both State maps: users, users_rooms
     NewUsers = maps:remove(Username, maps:get(users, State)),
-    NewUsersInRooms = maps:remove(Username, maps:get(users, State)),
+    NewUsersInRooms = maps:remove(Username, maps:get(users_rooms, State)),
     {noreply, State#{users := NewUsers, users_rooms := NewUsersInRooms}};
 
 %% Send a server notification to a room

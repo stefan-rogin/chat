@@ -8,7 +8,7 @@
     help =>
         "Available commands:\n"
         "/rooms, /create <Room>, /join <Room>, /leave, /destroy <Room>\n"
-        "/users, /quit, /help\n"
+        "/users, /whisper <User> <Message>, /quit, /help\n"
         "Join a room to send messages to its members.\n",
     online_users => "Online users: ",
     rooms => "Rooms: ",
@@ -28,7 +28,8 @@
     user_left_room => "You left room ~s.~n",
     room_joined_same => "You are already in this room.\n",
     user_not_in_room => "You are already in the lobby.\n",
-    room_destroyed => "This room is being destroyed by its owner.\n"
+    room_destroyed => "This room is being destroyed by its owner.\n",
+    user_not_online => "This user is not online. Use /users to see online users.\n"
 }).
 
 %% TODO: Handle missing key
