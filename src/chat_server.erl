@@ -1,9 +1,11 @@
 -module(chat_server).
 -behavior(gen_server).
 
+-include_lib("include/records.hrl").
+
 -export([add_user/2, remove_user/1, get_users/0, is_user_online/1]).
--export([create_room/2, get_rooms/0, destroy_room/2]).
--export([join_room/2, leave_room/1, send_message/2, whisper_message/2]).
+-export([create_room/3, get_rooms/1, destroy_room/2, invite_user/2]).
+-export([join_room/2, leave_room/1, send_message/2, whisper_message/3]).
 -export([start/1, init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 %% Public interface
@@ -20,11 +22,11 @@ get_users() ->
 is_user_online(Username) ->
     gen_server:call(?MODULE, {is_user_online, Username}).
 
-get_rooms() ->
-    gen_server:call(?MODULE, get_rooms).
+get_rooms(Username) ->
+    gen_server:call(?MODULE, {get_rooms, Username}).
 
-create_room(RoomName, Username) ->
-    gen_server:call(?MODULE, {create_room, RoomName, Username}).
+create_room(RoomName, Username, IsPrivate) ->
+    gen_server:call(?MODULE, {create_room, RoomName, Username, IsPrivate}).
 
 destroy_room(RoomName, Username) ->
     gen_server:call(?MODULE, {destroy_room, RoomName, Username}).
@@ -32,14 +34,17 @@ destroy_room(RoomName, Username) ->
 join_room(RoomName, Username) ->
     gen_server:call(?MODULE, {join_room, RoomName, Username}).
 
+invite_user(Username, TargetUsername) ->
+    gen_server:call(?MODULE, {invite_user, Username, TargetUsername}).
+
 leave_room(Username) ->
     gen_server:call(?MODULE, {leave_room, Username}).
 
 send_message(Username, Message) ->
     gen_server:call(?MODULE, {send_message, Username, Message}).
 
-whisper_message(Username, Message) ->
-    gen_server:call(?MODULE, {whisper_message, Username, Message}).
+whisper_message(Username, TargetUsername, Message) ->
+    gen_server:call(?MODULE, {whisper_message, Username, TargetUsername, Message}).
 
 %% Implementation: delegate to handler
 
@@ -61,7 +66,7 @@ init(Port) ->
     io:format("Chat server listening on port ~p~n", [Port]),
     %% Spawn acceptor process
     spawn(fun() -> accept(ListenSocket) end),
-    {ok, #{users => #{}, rooms => #{}, users_rooms => #{}}}.
+    {ok, #state{}}.
 
 accept(ListenSocket) ->
     case gen_tcp:accept(ListenSocket) of

@@ -5,7 +5,6 @@ handle_login(Socket) ->
     %% Prompt user to authenticate
     gen_tcp:send(Socket, text:txt(login)),
 
-    %% TODO: Fix nesting
     case gen_tcp:recv(Socket, 0) of
         {ok, UsernameBin} ->
             %% Match reply to a username-like or drop connection

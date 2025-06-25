@@ -8,12 +8,23 @@ Demo project for evaluation. __Chat__ is an Erlang/OTP app that acts as a chat s
 - Once connected, users can create, destroy, join and leave rooms. 
 - Users can send messages to rooms, received by all room members.
 - Users can send direct messages to online users using `/whisper <User> <Message>`. Direct messages are marked with `<<Sender>>: Message`, to separate them from room messages.
+- Users can create private rooms, not visible to non-members, and invite other users to them.
 - The project contains Terraform deployment configuration with NLB and ASG, security group, and an instance template.
 
 ```
 Available commands:
-/rooms, /create <Room>, /join <Room>, /leave, /destroy <Room>
-/users, /whisper <User> <Message>, /quit, /help
+/rooms                      List existing rooms (without private ones where you are not a member).
+/create <Room>              Create free access room.
+/create_private <Room>      Create private room.
+/join <Room>                Join room.
+/invite <User>              Add user to private room members (requires ownership of private room).
+/leave                      Leave currently joined room.
+/destroy <Room>             Destroy owned room.
+/users                      List online users.
+/whisper <User> <Message>   Send private message to an user.
+/quit                       Leave server.
+/help                       This.
+
 Join a room to send messages to its members.
 ```
 
@@ -112,14 +123,14 @@ Welcome, one.
 Known shortcomings of the current stage.
 
 - Logging is crude.
-- Tests are few, limited to use cases not involving mocking `gen_tcp` or `chat_server` (for `user_handler` tests).
+- Tests are few, limited to use cases not involving mocking.
 - The app is not ready to work with multiple instances sharing the same state.
 - Known issue: when automatically deployed with `terraform apply`, the service fails to start correctly. The workaround is to manually start the app on the instances. 
 
 ```
-ubuntu@ip-172-31-41-241:~$ sudo systemctl stop chat
-ubuntu@ip-172-31-41-241:~$ sudo systemctl disable chat
-ubuntu@ip-172-31-41-241:~$ /home/ubuntu/chat/_builddefault/rel/chat/bin/chat daemon
+ubuntu@ip-123-12-12-123:~$ sudo systemctl stop chat
+ubuntu@ip-123-12-12-123:~$ sudo systemctl disable chat
+ubuntu@ip-123-12-12-123:~$ /home/ubuntu/chat/_builddefault/rel/chat/bin/chat daemon
 [...]
 telnet chat-nlb-1c25346c40b654b7.elb.eu-central-1amazonaws.com 8080
 [...]
