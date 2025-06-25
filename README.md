@@ -7,12 +7,13 @@ Demo project for evaluation. __Chat__ is an Erlang/OTP app that acts as a chat s
 - When started, server accepts multiple connections over TCP from named users.
 - Once connected, users can create, destroy, join and leave rooms. 
 - Users can send messages to rooms, received by all room members.
+- Users can send direct messages to online users using `/whisper <User> <Message>`. Direct messages are marked with `<<Sender>>: Message`, to separate them from room messages.
 - The project contains Terraform deployment configuration with NLB and ASG, security group, and an instance template.
 
 ```
 Available commands:
 /rooms, /create <Room>, /join <Room>, /leave, /destroy <Room>
-/users, /quit, /help
+/users, /whisper <User> <Message>, /quit, /help
 Join a room to send messages to its members.
 ```
 
@@ -32,7 +33,7 @@ The project relies on Rebar3 and Erlang/OTP 25 already being present in your sys
 
     $ git clone https://github.com/stefan-rogin/chat.git
     $ cd chat
-    $ rebar3 release
+    $ rebar3 compile
     [...]
     ===> Release successfully assembled: _build/default/rel/chat
 
@@ -44,6 +45,7 @@ You can run tests with `rebar3 eunit`, or with `rebar3 eunit && rebar3 cover --v
 
 #### Step 1: Start server
 
+    $ rebar3 release
     $ ./_build/default/rel/chat/bin/chat console
     Chat server listening on port 8080
     1>

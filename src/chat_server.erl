@@ -3,7 +3,7 @@
 
 -export([add_user/2, remove_user/1, get_users/0, is_user_online/1]).
 -export([create_room/2, get_rooms/0, destroy_room/2]).
--export([join_room/2, leave_room/1, send_message/2]).
+-export([join_room/2, leave_room/1, send_message/2, whisper_message/2]).
 -export([start/1, init/1, handle_call/3, handle_cast/2, handle_info/2]).
 
 %% Public interface
@@ -37,6 +37,9 @@ leave_room(Username) ->
 
 send_message(Username, Message) ->
     gen_server:call(?MODULE, {send_message, Username, Message}).
+
+whisper_message(Username, Message) ->
+    gen_server:call(?MODULE, {whisper_message, Username, Message}).
 
 %% Implementation: delegate to handler
 
