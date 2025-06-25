@@ -1,6 +1,8 @@
 -module(user_handler).
 -export([handle_info/2]).
 
+-define(SERVER, chat_server).
+
 %% Message exchange handler between user and service. 
 %% It identifies actions, sends them to server for execution,
 %% then provides user feedback, based on their result.
@@ -10,80 +12,108 @@ handle_info({tcp, Socket, Data}, State) ->
     {Cmd, Arg} = parse(Data),
     Response =
         case {Cmd, Arg} of
+
             %% Show help
             {"/help", _} ->
                 text:txt(help);
+
             %% Show users
             {"/users", _} ->
-                Users = chat_server:get_users(),
+                Users = ?SERVER:get_users(),
                 text:txt(online_users) ++ string:join(Users, ", ") ++ "\n";
+
             %% Show rooms
             {"/rooms", _} ->
-                Rooms = chat_server:get_rooms(),
+                Rooms = ?SERVER:get_rooms(Username),
                 case Rooms of
                     [_One | _] ->
                         text:txt(rooms) ++ string:join(Rooms, ", ") ++ "\n";
                     [] ->
                         text:txt(no_rooms)
                 end;
+
             %% Create room
             {"/create", RoomName} when is_list(RoomName), RoomName =/= [] ->
-                case chat_server:create_room(RoomName, Username) of
+                case ?SERVER:create_room(RoomName, Username, false) of
                     ok ->
                         io_lib:format(text:txt(room_arg_created), [RoomName]);
-                    {error, room_not_available} ->
-                        text:txt(room_not_available)
+                    {error, Reason} ->
+                        text:txt(Reason)
+                end;  
+
+            %% Create private room
+            {"/create_private", RoomName} when is_list(RoomName), RoomName =/= [] ->
+                case ?SERVER:create_room(RoomName, Username, true) of
+                    ok ->
+                        io_lib:format(text:txt(room_arg_created), [RoomName]);
+                    {error, Reason} ->
+                        text:txt(Reason)
                 end;
+
+            {"/invite", TargetUsername} when 
+                is_list(TargetUsername), TargetUsername =/= [] ->
+                
+                case ?SERVER:invite_user(Username, TargetUsername) of
+                    {ok, RoomName} ->
+                        %% Notify target user of invite
+                        ?SERVER:whisper_message(
+                            Username, 
+                            TargetUsername, 
+                            io_lib:format(text:txt(invited_arg_room), [RoomName])),
+                        text:txt(member_invited);
+                    {error, Reason} ->
+                        text:txt(Reason)
+                end;
+
             %% Destroy room
             {"/destroy", RoomName} when is_list(RoomName), RoomName =/= [] ->
-                case chat_server:destroy_room(RoomName, Username) of
+                case ?SERVER:destroy_room(RoomName, Username) of
                     ok ->
                         io_lib:format(text:txt(room_arg_destroyed), [RoomName]);
-                    {error, room_not_owned} ->
-                        text:txt(room_not_owned);
-                    {error, room_not_present} ->
-                        text:txt(room_not_present)
+                    {error, Reason} ->
+                        text:txt(Reason)
                 end;
+
             %% Join room
             {"/join", RoomName} when is_list(RoomName), RoomName =/= [] ->
-                case chat_server:join_room(RoomName, Username) of
+                case ?SERVER:join_room(RoomName, Username) of
                     ok -> ok;
-                    {error, room_joined_same} ->
-                        text:txt(room_joined_same);
-                    {error, room_not_present} ->
-                        text:txt(room_not_present)
+                    {error, Reason} ->
+                        text:txt(Reason)
                 end;
+
             %% Leave room
             {"/leave", _}  ->
-                case chat_server:leave_room(Username) of
+                case ?SERVER:leave_room(Username) of
                     {error, user_not_in_room} ->
                         text:txt(user_not_in_room);                    
                     RoomName ->
                         io_lib:format(text:txt(user_left_room), [RoomName])
                 end;
+
             %% Send private message
             {"/whisper", Target} ->
                 %% Strip first two tokens (Cmd, Arg) from original message
                 Message = sanitize_message(Data),
-                case chat_server:whisper_message(Target, Message) of
+                case ?SERVER:whisper_message(Username, Target, Message) of
                     ok ->ok;
-                    {error, user_not_online} ->
-                        text:txt(user_not_online)
+                    {error, Reason} ->
+                        text:txt(Reason)
                 end;
+
             %% Disconnect from service
             {"/quit", _} ->
-                %% TODO: Move disconnect outside Response case
-                gen_tcp:send(Socket, text:txt(bye)),
-                gen_tcp:close(Socket),
-                disconnect(State);
+                disconnect;
+
             %% Send message
             {"/send", Message} ->
                 %% Not a command, ask server to send message
-                case chat_server:send_message(Username, Message) of
+                case ?SERVER:send_message(Username, Message) of
                     ok -> ok;
                     {error, user_not_in_room} ->
                         text:txt(default)
                 end;
+
             %% Unknown
             _ ->
                 text:txt(default)
@@ -92,6 +122,10 @@ handle_info({tcp, Socket, Data}, State) ->
     case Response of
         R when is_list(R); is_binary(R) ->
             gen_tcp:send(Socket, R);
+        disconnect ->
+            gen_tcp:send(Socket, text:txt(bye)),
+            gen_tcp:close(Socket),
+            disconnect(State);
         _ -> ok
     end,
     inet:setopts(Socket, [{active, once}]),
@@ -111,7 +145,7 @@ handle_info(_, State) ->
 %% Disconnect user
 disconnect(State) ->
     Username = maps:get(username, State),
-    chat_server:remove_user(Username),
+    ?SERVER:remove_user(Username),
     io:format("User disconnected: ~s~n", [Username]),
     {noreply, State}.
 
@@ -119,7 +153,6 @@ disconnect(State) ->
 parse(Message) ->
     Trimmed = string:trim(binary_to_list(Message)),
     Tokens = string:tokens(Trimmed, " "),
-    %% TODO: Maybe discard empty messages?
     case Tokens of
         [Cmd, Arg | _] when hd(Cmd) =:= $/ -> {Cmd, Arg}; %% Command with arg
         [Cmd] when hd(Cmd) =:= $/ -> {Cmd, ""}; %% Command without arg

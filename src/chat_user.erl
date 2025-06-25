@@ -22,7 +22,7 @@ init({Username, Socket}) ->
             text:txt(welcome_arg), [Username]
         )
     ),
-    {ok, #{username => Username, socket => Socket}}.
+    {ok, #{username => Username}}.
 
 %% Unsupported
 handle_call(_, _From, State) -> 

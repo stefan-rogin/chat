@@ -1,36 +1,42 @@
 -module(server_handler).
 
+-include_lib("../include/records.hrl").
+
 -export([handle_cast/2, handle_call/3]).
 
 -define(SERVER, chat_server).
 
 %% Create room
-handle_call({create_room, RoomName, Username}, _From, State) ->
-    Rooms = maps:get(rooms, State),
+handle_call({create_room, RoomName, Username, IsPrivate}, _From, State) ->
+    Rooms = State#state.rooms,
     case maps:is_key(RoomName, Rooms) of
         %% Don't allow duplicate rooms
         true ->
             {reply, {error, room_not_available}, State};
         false ->
-            NewRooms = maps:put(RoomName, Username, Rooms),
-            {reply, ok, State#{rooms := NewRooms}}
+            NewRoom = #room{
+                owner = Username, 
+                isPrivate = IsPrivate, 
+                members = [Username]},
+            NewRooms = maps:put(RoomName, NewRoom, Rooms),
+            {reply, ok, State#state{rooms = NewRooms}}
     end;
 
 %% Destroy room
 handle_call({destroy_room, RoomName, Username}, _From, State) ->
-    Rooms = maps:get(rooms, State),
+    Rooms = State#state.rooms,
     case maps:find(RoomName, Rooms) of
-        {ok, Username} ->
-            %% FIXME: Notify room members about destruction
-            %% Sockets are removed before async call done
-            % Notification = text:txt(room_destroyed),
-            % gen_server:cast(?SERVER, {notify_room, RoomName, Notification}),
-            UsersInRooms = maps:get(users_rooms, State),
+        {ok, Room} when Room#room.owner =:= Username ->
+            %% TODO: Notify room members about destruction
             %% Remove from users_rooms entries with value of deleted room
-            NewUsersInRooms = maps:filter(fun(_, Room) -> Room =/= RoomName end, UsersInRooms),
+            NewUsersInRooms = maps:filter(
+                fun(_, R) -> R =/= RoomName end, 
+                State#state.users_rooms),
             NewRooms = maps:remove(RoomName, Rooms),
-            {reply, ok, State#{rooms := NewRooms, users_rooms := NewUsersInRooms}};
-        {ok, _OtherUsername} ->
+            {reply, ok, State#state{
+                rooms = NewRooms, 
+                users_rooms = NewUsersInRooms}};
+        {ok, _OtherRoom} ->
             {reply, {error, room_not_owned}, State};
         error ->
             {reply, {error, room_not_present}, State}
@@ -38,10 +44,10 @@ handle_call({destroy_room, RoomName, Username}, _From, State) ->
 
 %% Join room
 handle_call({join_room, RoomName, Username}, _From, State) ->
-    Rooms = maps:get(rooms, State),
     %% Hold state in an user => room map
-    UsersInRooms = maps:get(users_rooms, State),
-    case maps:is_key(RoomName, Rooms) of
+    UsersInRooms = State#state.users_rooms,
+    %% Room access is resolved by chat_server:get_rooms
+    case lists:member(RoomName, get_visible_rooms(Username, State#state.rooms)) of
         false ->
             {reply, {error, room_not_present}, State};
         true ->
@@ -53,43 +59,61 @@ handle_call({join_room, RoomName, Username}, _From, State) ->
                     %% User is in other room. Automatically leave and join the new one
                     InterimUsersInRooms = leave_room_internal(Username, OtherRoom, UsersInRooms),
                     NewUsersInRooms = join_room_internal(RoomName, Username, InterimUsersInRooms),
-                    {reply, ok, State#{users_rooms := NewUsersInRooms}};
+                    {reply, ok, State#state{users_rooms = NewUsersInRooms}};
                 error ->
                     %% User not in any room already, just join
                     NewUsersInRooms = join_room_internal(RoomName, Username, UsersInRooms),
-                    {reply, ok, State#{users_rooms := NewUsersInRooms}}
+                    {reply, ok, State#state{users_rooms = NewUsersInRooms}}
             end
     end;
 
+%% Add member to owned private room
+handle_call({invite_user, Username, TargetUsername}, _From, State) ->
+    %% Get the room where the user making the invite is in
+    case maps:find(Username, State#state.users_rooms) of
+        {ok, RoomName} -> 
+            %% Check if user is owner and target is not a member already 
+            case can_invite(Username, TargetUsername, RoomName, State) of
+                {ok, NewRooms} ->
+                    {reply, {ok, RoomName}, State#state{rooms = NewRooms}};
+                {error, Reason} ->
+                    {reply, {error, Reason}, State}
+            end;
+        error -> 
+            {reply, {error, room_not_joined_for_invite}, State}
+    end; 
+
 %% Leave room
 handle_call({leave_room, Username}, _From, State) ->
-    UsersInRooms = maps:get(users_rooms, State),
+    UsersInRooms = State#state.users_rooms,
     case maps:find(Username, UsersInRooms) of
         {ok, RoomName} ->
             %% Invoke helper to notify room about user exit, 
             %% then prepare state changes for State#{users_rooms} 
             NewUsersInRooms = leave_room_internal(Username, RoomName, UsersInRooms),
-            {reply, RoomName, State#{users_rooms := NewUsersInRooms}};
+            {reply, RoomName, State#state{users_rooms = NewUsersInRooms}};
         error ->
             {reply, {error, user_not_in_room}, State}
     end;
 
 %% Get users
 handle_call(get_users, _From, State) ->
-    {reply, maps:keys(maps:get(users, State)), State};
+    {reply, maps:keys(State#state.users), State};
 
 %% Is user online
 handle_call({is_user_online, Username}, _From, State) ->
-    IsOnline = maps:is_key(Username, maps:get(users, State)),
+    IsOnline = maps:is_key(Username, State#state.users),
     {reply, IsOnline, State};
 
 %% Get rooms
-handle_call(get_rooms, _From, State) ->
-    {reply, maps:keys(maps:get(rooms, State)), State};
+handle_call({get_rooms, Username}, _From, State) -> 
+    %% Filter out rooms where Room is private and Username is member
+    VisibleRooms = get_visible_rooms(Username, State#state.rooms),
+    {reply, VisibleRooms, State};
 
 %% Send message
 handle_call({send_message, Username, Message}, _From, State) ->
-    case maps:find(Username, maps:get(users_rooms, State)) of
+    case maps:find(Username, State#state.users_rooms) of
         {ok, RoomName} ->
             RoomMessage = io_lib:format("[~s]: ~s~n", [Username, Message]),
             %% Invoke helper to identify matching users/sockets as room recipients
@@ -102,8 +126,8 @@ handle_call({send_message, Username, Message}, _From, State) ->
     end;
 
 %% Whisper message
-handle_call({whisper_message, Username, Message}, _From, State) ->
-    case maps:find(Username, maps:get(users, State)) of
+handle_call({whisper_message, Username, TargetUsername, Message}, _From, State) ->
+    case maps:find(TargetUsername, State#state.users) of
         {ok, Socket} ->
             Whisper = io_lib:format("<<~s>>: ~s~n", [Username, Message]),
             gen_tcp:send(Socket, Whisper),
@@ -119,15 +143,24 @@ handle_call(_, _From, State) ->
 
 %% Add user
 handle_cast({add_user, Username, Socket}, State) ->
-    Users = maps:put(Username, Socket, maps:get(users, State)),
-    {noreply, State#{users := Users}};
+    NewUsers = maps:put(Username, Socket, State#state.users),
+    {noreply, State#state{users = NewUsers}};
 
 %% Remove user
 handle_cast({remove_user, Username}, State) ->
     %% Update both State maps: users, users_rooms
-    NewUsers = maps:remove(Username, maps:get(users, State)),
-    NewUsersInRooms = maps:remove(Username, maps:get(users_rooms, State)),
-    {noreply, State#{users := NewUsers, users_rooms := NewUsersInRooms}};
+    %% If user is in room, notify members about exit
+    UsersInRooms = State#state.users_rooms,
+    case maps:find(Username, UsersInRooms) of
+        {ok, RoomName} ->
+            NewUsersInRooms = leave_room_internal(Username, RoomName, UsersInRooms);
+        error ->
+            NewUsersInRooms = UsersInRooms
+    end,
+    NewUsers = maps:remove(Username, State#state.users),
+    {noreply, State#state{
+        users = NewUsers, 
+        users_rooms = NewUsersInRooms}};
 
 %% Send a server notification to a room
 handle_cast({notify_room, RoomName, Notification}, State) ->
@@ -154,7 +187,45 @@ join_room_internal(RoomName, Username, UsersInRooms) ->
 
 %% Helper for getting sockets for a given room
 get_room_sockets(WithoutUsername, RoomName, State) ->
-    Users = maps:get(users, State),
-    UsersInRooms = maps:get(users_rooms, State),
+    Users = State#state.users,
+    UsersInRooms = State#state.users_rooms,
     [maps:get(User, Users) || {User, Room} 
         <- maps:to_list(UsersInRooms), Room =:= RoomName, User =/= WithoutUsername].
+
+%% Helper for getting visible rooms, according to permissions
+%% Filter out rooms where Room is private and Username is member
+get_visible_rooms(Username, Rooms) ->
+    VisibleRooms = maps:filter(
+        fun(_RoomName, #room{isPrivate = true, members = Members}) -> 
+                lists:member(Username, Members);
+            (_RoomName, #room{isPrivate = false}) ->
+                true 
+        end, 
+        Rooms),
+    maps:keys(VisibleRooms).
+
+%% Helper for adding member to a private room, 
+%% if criteria are met: room is private, invite is 
+%% sent by owner and target user is not a member 
+can_invite(Username, TargetUsername, RoomName, State) ->
+    Users = State#state.users,
+    case maps:is_key(TargetUsername, Users) of
+        false ->
+            {error, user_not_online};
+        true ->
+            case maps:find(RoomName, State#state.rooms) of
+                {ok, #room{isPrivate = true, owner = Username, members = Members} = Room} ->
+                    case lists:member(TargetUsername, Members) of
+                        true -> {error, user_already_private_member};
+                        false ->
+                            NewMembers = [TargetUsername | Members],
+                            NewRoom = Room#room{members = NewMembers},
+                            UpdatedRooms = maps:put(RoomName, NewRoom, State#state.rooms),
+                            {ok, UpdatedRooms}
+                    end;
+                {ok, _Other} ->
+                    {error, room_not_private_or_not_owner};
+                error ->
+                    {error, room_not_found}
+            end
+    end.
