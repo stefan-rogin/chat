@@ -1,0 +1,34 @@
+services:
+  chat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: chat
+    container_name: chat
+    environment:
+      AWS_ACCESS_KEY_ID: secret
+      AWS_SECRET_ACCESS_KEY: secret
+      AWS_REGION: eu-central-1
+    depends_on:
+      - dynamodb
+    ports:
+      - "4000:4000"
+    networks:
+      - appnet
+
+  dynamodb:
+    image: amazon/dynamodb-local
+    container_name: dynamodb_local
+    command: -jar DynamoDBLocal.jar -sharedDb -dbPath /home/dynamodblocal/data
+    volumes:
+      - dynamodb_data:/home/dynamodblocal/data
+    ports:
+      - "8000:8000"
+    networks:
+      - appnet
+
+volumes:
+  dynamodb_data:
+
+networks:
+  appnet:

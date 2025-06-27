@@ -20,14 +20,14 @@ handle_info({tcp, Socket, Data}, State) ->
             %% Show users
             {"/users", _} ->
                 Users = ?SERVER:get_users(),
-                text:txt(online_users) ++ string:join(Users, ", ") ++ "\n";
+                text:txt(online_users) ++ string:join(Users, ", ");
 
             %% Show rooms
             {"/rooms", _} ->
                 Rooms = ?SERVER:get_rooms(Username),
                 case Rooms of
                     [_One | _] ->
-                        text:txt(rooms) ++ string:join(Rooms, ", ") ++ "\n";
+                        text:txt(rooms) ++ string:join(Rooms, ", ");
                     [] ->
                         text:txt(no_rooms)
                 end;
@@ -49,7 +49,8 @@ handle_info({tcp, Socket, Data}, State) ->
                     {error, Reason} ->
                         text:txt(Reason)
                 end;
-
+            
+            %% Add member to owned private room
             {"/invite", TargetUsername} when 
                 is_list(TargetUsername), TargetUsername =/= [] ->
                 
@@ -120,11 +121,10 @@ handle_info({tcp, Socket, Data}, State) ->
         end,
     %% Send feedback to user, if any
     case Response of
-        R when is_list(R); is_binary(R) ->
-            gen_tcp:send(Socket, R);
+        R when is_list(R); is_binary(R) -> 
+            comms:send_line(Socket, R);
         disconnect ->
-            gen_tcp:send(Socket, text:txt(bye)),
-            gen_tcp:close(Socket),
+            comms:send_line(Socket, text:txt(bye)),
             disconnect(State);
         _ -> ok
     end,
@@ -145,6 +145,7 @@ handle_info(_, State) ->
 %% Disconnect user
 disconnect(State) ->
     Username = maps:get(username, State),
+    gen_tcp:close(maps:get(socket, State)),
     ?SERVER:remove_user(Username),
     io:format("User disconnected: ~s~n", [Username]),
     {noreply, State}.

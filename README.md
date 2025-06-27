@@ -58,7 +58,7 @@ You can run tests with `rebar3 eunit`, or with `rebar3 eunit && rebar3 cover --v
 
     $ rebar3 release
     $ ./_build/default/rel/chat/bin/chat console
-    Chat server listening on port 8080
+    Chat server listening on port 4000
     1>
  
  Console will show output from the application, such as connected and disconnected users:
@@ -66,13 +66,22 @@ You can run tests with `rebar3 eunit`, or with `rebar3 eunit && rebar3 cover --v
     User connected: one
     User connected: two
 
+#### Step 1 option: Start server in Docker instead
+
+The app can be started in a Docker container, from a locally built image.
+
+```
+$ docker build -t chat .
+$ docker run -d -p 4000:4000 chat
+```
+
 #### Step 2: Connect from clients
 
 Use `telnet` or `nc` to connect to the server from multiple terminals, to impersonate different users. At login, the chat server expects a username-like entry, closing the connection otherwise.
 
 | **User one**                                | **User two**                                  |
 |---------------------------------------------|-----------------------------------------------|
-| `$ telnet localhost 8080`                   | `$ telnet localhost 8080`                     |
+| `$ telnet localhost 4000`                   | `$ telnet localhost 4000`                     |
 | `[...]`                                     | `[...]`                                       |
 | `Login:one`                                 | `Login:two`                                   |
 | `Welcome, one.`                             | `Welcome, two.`                               |
@@ -111,7 +120,7 @@ $ terraform apply
 Apply complete! Resources: 6 added, 0 changed, 0destroyed.
 Outputs:
 nlb_dns_name = "Public access DNS:chat-nlb-78a7692ad6078424.elb.eu-central-1.amazonawscom"
-$ telnet chat-nlb-78a7692ad6078424.elb.eu-central-1amazonaws.com 8080
+$ telnet chat-nlb-78a7692ad6078424.elb.eu-central-1amazonaws.com 4000
 [...]
 Login:one
 Welcome, one.
@@ -132,7 +141,7 @@ ubuntu@ip-123-12-12-123:~$ sudo systemctl stop chat
 ubuntu@ip-123-12-12-123:~$ sudo systemctl disable chat
 ubuntu@ip-123-12-12-123:~$ /home/ubuntu/chat/_builddefault/rel/chat/bin/chat daemon
 [...]
-telnet chat-nlb-1c25346c40b654b7.elb.eu-central-1amazonaws.com 8080
+telnet chat-nlb-1c25346c40b654b7.elb.eu-central-1amazonaws.com 4000
 [...]
 Login:three
 Welcome, three.

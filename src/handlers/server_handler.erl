@@ -115,11 +115,11 @@ handle_call({get_rooms, Username}, _From, State) ->
 handle_call({send_message, Username, Message}, _From, State) ->
     case maps:find(Username, State#state.users_rooms) of
         {ok, RoomName} ->
-            RoomMessage = io_lib:format("[~s]: ~s~n", [Username, Message]),
+            RoomMessage = io_lib:format("[~s]: ~s", [Username, Message]),
             %% Invoke helper to identify matching users/sockets as room recipients
             %% The message author is excluded
             RoomSockets = get_room_sockets(Username, RoomName, State),
-            [gen_tcp:send(Socket, RoomMessage) || Socket <- RoomSockets],
+            [comms:send_line(Socket, RoomMessage) || Socket <- RoomSockets],
             {reply, ok, State};
         error ->
             {reply, {error, user_not_in_room}, State}
@@ -129,8 +129,8 @@ handle_call({send_message, Username, Message}, _From, State) ->
 handle_call({whisper_message, Username, TargetUsername, Message}, _From, State) ->
     case maps:find(TargetUsername, State#state.users) of
         {ok, Socket} ->
-            Whisper = io_lib:format("<<~s>>: ~s~n", [Username, Message]),
-            gen_tcp:send(Socket, Whisper),
+            Whisper = io_lib:format("<<~s>>: ~s", [Username, Message]),
+            comms:send_line(Socket, Whisper),
             {reply, ok, State};
         error ->
             {reply, {error, user_not_online}, State}
@@ -165,7 +165,7 @@ handle_cast({remove_user, Username}, State) ->
 %% Send a server notification to a room
 handle_cast({notify_room, RoomName, Notification}, State) ->
     RoomSockets = get_room_sockets("", RoomName, State),
-    [gen_tcp:send(Socket, "[*]: " ++ Notification) || Socket <- RoomSockets],
+    [comms:send_line(Socket, "[*]: " ++ Notification) || Socket <- RoomSockets],
     {noreply, State};
 
 %% Unsupported

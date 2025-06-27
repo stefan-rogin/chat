@@ -5,7 +5,7 @@ variable "region" {
 
 variable "service_port" {
   type    = number
-  default = 8080
+  default = 4000
 }
 
 variable "instance_type" {

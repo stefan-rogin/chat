@@ -24,7 +24,7 @@ start_link() ->
 %%                  type => worker(),       % optional
 %%                  modules => modules()}   % optional
 init([]) ->
-    {ok, Port} = application:get_env(port),
+    {ok, Port} = application:get_env(chat_app_port),
     SupFlags = #{
         strategy => one_for_all,
         intensity => 10,

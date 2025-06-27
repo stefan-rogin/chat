@@ -16,13 +16,11 @@ start_link(Username, Socket) ->
 init({Username, Socket}) ->
     chat_server:add_user(Username, Socket),
     inet:setopts(Socket, [{active, once}]),
-    gen_tcp:send(
+    comms:send_line(
         Socket,
-        io_lib:format(
-            text:txt(welcome_arg), [Username]
-        )
+        io_lib:format(text:txt(welcome_arg), [Username])
     ),
-    {ok, #{username => Username}}.
+    {ok, #{username => Username, socket => Socket}}.
 
 %% Unsupported
 handle_call(_, _From, State) -> 

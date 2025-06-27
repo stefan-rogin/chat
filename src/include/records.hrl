@@ -9,3 +9,10 @@
     rooms = #{},         % RoomName => #room{}
     users_rooms = #{}    % Username => RoomName
 }).
+
+-record(message, {
+    room,                % Room name
+    from,                % Username (string)
+    timestamp,           % number
+    body                 % Message body (text)
+}).
